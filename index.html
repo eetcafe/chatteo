@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <title>ChatTEO AI</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #1e1e2e; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .container { width: 400px; min-height: 500px; background: #2b2b3b; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .header { background: #3b3b4f; padding: 15px; text-align: center; font-weight: bold; font-size: 1.2em; border-bottom: 1px solid #444; }
+        .login-screen { padding: 25px; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; height: 100%; text-align: center; }
+        .social-btn { width: 100%; border: none; padding: 12px; font-size: 15px; font-weight: bold; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .google-btn { background: #4285F4; color: white; }
+        .divider { display: flex; align-items: center; width: 100%; margin: 10px 0; color: #aaa; font-size: 12px; }
+        .divider::before, .divider::after { content: ""; flex: 1; border-bottom: 1px solid #444; }
+        .email-form { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+        .email-form input { padding: 12px; border-radius: 6px; border: 1px solid #444; background: #222230; color: #fff; outline: none; }
+        .email-btn { background: #007bff; color: white; border: none; padding: 12px; font-weight: bold; border-radius: 6px; cursor: pointer; }
+        .chat-screen { display: none; flex-direction: column; height: 100%; flex: 1; }
+        .chat-box { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        .message { padding: 10px 14px; border-radius: 8px; max-width: 80%; }
+        .user { background: #007bff; align-self: flex-end; }
+        .ai { background: #44445a; align-self: flex-start; }
+        .input-area { display: flex; border-top: 1px solid #444; }
+        .input-area input { flex: 1; padding: 15px; border: none; background: #222230; color: #fff; outline: none; }
+        .input-area button { padding: 15px 20px; background: #007bff; border: none; color: #fff; cursor: pointer; }
+        
+        .banned-screen { display: none; padding: 30px; text-align: center; color: #ff4d4d; }
+    </style>
+</head>
+<body>
+
+<div class="container" id="mainContainer">
+    <div class="header">🤖 ChatTEO</div>
+
+    <div class="login-screen" id="loginScreen">
+        <h2>Üdvözöl a ChatTEO!</h2>
+        <button class="social-btn google-btn" onclick="loginWithGoogle()">🌐 Bejelentkezés Google-lal</button>
+        <div class="divider">VAGY EMAIL-LEL</div>
+        <div class="email-form">
+            <input type="email" id="emailInput" placeholder="E-mail cím...">
+            <input type="password" id="passwordInput" placeholder="Jelszó...">
+            <button class="email-btn" onclick="loginWithEmail()">Bejelentkezés / Regisztráció</button>
+        </div>
+    </div>
+
+    <div class="chat-screen" id="chatScreen">
+        <div class="chat-box" id="chatBox">
+            <div class="message ai" id="welcomeMsg">Üdvözöllek! ChatTEO vagyok.</div>
+        </div>
+        <div class="input-area">
+            <input type="text" id="userInput" placeholder="Írj a ChatTEO-nak..." onkeydown="if(event.key === 'Enter') sendMessage()">
+            <button onclick="sendMessage()">Küldés</button>
+        </div>
+    </div>
+
+    <div class="banned-screen" id="bannedScreen">
+        <h2>🚫 KI VAGY BANNOLVA!</h2>
+        <p id="banReasonText" style="color: #fff; margin-top: 15px;"></p>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyAtF2vk9I59i6lEVftbFshlEHCHQXQ0-XM",
+        authDomain: "chatteo-5ffe4.firebaseapp.com",
+        projectId: "chatteo-5ffe4",
+        storageBucket: "chatteo-5ffe4.firebasestorage.app",
+        messagingSenderId: "238818745354",
+        appId: "1:238818745354:web:f61067f8975a67e95913f3"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    async function handleSuccess(user) {
+        // Ellenőrizzük a felhasználó jogosultságát Firestore-ban
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        
+        if (userDoc.exists()) {
+            const role = userDoc.data().role;
+            if (role === "admin" || role === "ai") {
+                window.location.href = "/admin.html"; // Ha Admin/AI, azonnal az admin felületre dobja!
+                return;
+            }
+        }
+
+        const name = user.displayName || user.email.split('@')[0];
+        window.socket.emit('externalLogin', { name: name, email: user.email });
+
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('chatScreen').style.display = 'flex';
+        document.getElementById('welcomeMsg').innerText = `Üdvözöllek ${name}! ChatTEO vagyok. Miben segíthetek?`;
+    }
+
+    window.loginWithGoogle = () => {
+        signInWithPopup(auth, new GoogleAuthProvider()).then((res) => handleSuccess(res.user)).catch((err) => alert(err.message));
+    };
+
+    window.loginWithEmail = () => {
+        const email = document.getElementById('emailInput').value.trim();
+        const password = document.getElementById('passwordInput').value.trim();
+        if(!email || !password) return alert("Add meg az adatokat!");
+
+        signInWithEmailAndPassword(auth, email, password)
+            .then((res) => handleSuccess(res.user))
+            .catch(() => {
+                createUserWithEmailAndPassword(auth, email, password)
+                    .then((res) => handleSuccess(res.user))
+                    .catch((err) => alert(err.message));
+            });
+    };
+</script>
+
+<script>
+const socket = io("https://chatteo.onrender.com");
+    window.socket = socket;
+
+    function sendMessage() {
+        const input = document.getElementById('userInput');
+        const text = input.value.trim();
+        if(!text) return;
+        appendMessage(text, 'user');
+        socket.emit('userMessage', { message: text });
+        input.value = '';
+    }
+
+    socket.on('aiReceiveMessage', (data) => appendMessage(data.message, 'ai'));
+
+    socket.on('bannedNotification', (data) => {
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('chatScreen').style.display = 'none';
+        document.getElementById('bannedScreen').style.display = 'block';
+        document.getElementById('banReasonText').innerText = "Indok: " + data.reason;
+    });
+
+    function appendMessage(text, sender) {
+        const chatBox = document.getElementById('chatBox');
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `message ${sender}`;
+        msgDiv.innerText = text;
+        chatBox.appendChild(msgDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+</script>
+</body>
+</html>
