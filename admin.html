@@ -36,11 +36,12 @@
 </head>
 <body>
 
-  <!-- TÖLTŐ ÉS HIBAKÉPERNYŐ (Megállítja a folytonos átirányítást) -->
+  <!-- KÉPERNYŐ AMI MEGÁLLÍTJA A DOBÁLÓZÁST -->
   <div id="loadingScreen">
     <h2 id="statusText">Betöltés...</h2>
-    <p id="errorDetail" style="color: #ef4444; margin-top: 10px;"></p>
-    <button id="manualLogoutBtn" style="margin-top: 20px; display: none; background: #dc2626;">Kijelentkezés és Visszalépés</button>
+    <p id="errorDetail" style="color: #ef4444; margin-top: 10px; font-weight: bold;"></p>
+    <p id="uidDisplay" style="color: #9ca3af; margin-top: 10px; font-size: 0.85rem;"></p>
+    <button id="manualLogoutBtn" style="margin-top: 20px; display: none; background: #dc2626;">Kijelentkezés</button>
   </div>
 
   <div class="sidebar">
@@ -63,12 +64,12 @@
 
   <script>
     const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT.firebaseapp.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
+      apiKey: "AIzaSyAtF2vk9I59i6lEVftbFshlEHCHQXQ0-XM",
+      authDomain: "chatteo-5ffe4.firebaseapp.com",
+      projectId: "chatteo-5ffe4",
+      storageBucket: "chatteo-5ffe4.firebasestorage.app",
+      messagingSenderId: "238818745354",
+      appId: "1:238818745354:web:f61067f8975a67e95913f3"
     };
     firebase.initializeApp(firebaseConfig);
 
@@ -82,6 +83,7 @@
     const loadingScreen = document.getElementById('loadingScreen');
     const statusText = document.getElementById('statusText');
     const errorDetail = document.getElementById('errorDetail');
+    const uidDisplay = document.getElementById('uidDisplay');
     const manualLogoutBtn = document.getElementById('manualLogoutBtn');
 
     const userListDiv = document.getElementById('userList');
@@ -91,28 +93,26 @@
     const sendBtn = document.getElementById('sendBtn');
     const logoutBtn = document.getElementById('logoutBtn');
 
-    // AUTH ELLENŐRZÉS HUROK NÉLKÜL
     auth.onAuthStateChanged(async (user) => {
       if (!user) {
         window.location.href = 'index.html';
         return;
       }
 
+      uidDisplay.innerText = "A te Firebase UID azonosítód: " + user.uid;
+
       try {
         statusText.innerText = "Jogosultságok ellenőrzése...";
         const userDoc = await db.collection('users').doc(user.uid).get();
 
         if (userDoc.exists && (userDoc.data().role === 'admin' || userDoc.data().role === 'ai')) {
-          // SIKER: Elrejtjük a betöltő képernyőt
           loadingScreen.style.display = 'none';
-          
           socket.emit('joinRoom', { 
             userId: user.uid, 
             email: user.email, 
             role: userDoc.data().role 
           });
         } else {
-          // NEM ADMIN: Megállítjuk az átirányítást, és hibaüzenetet mutatunk!
           statusText.innerText = "❌ Hozzáférés Megtagadva";
           errorDetail.innerText = `A(z) "${user.email}" fiók nem rendelkezik Admin jogosultsággal!`;
           manualLogoutBtn.style.display = 'block';
@@ -128,7 +128,6 @@
       auth.signOut().then(() => window.location.href = 'index.html');
     });
 
-    // SOCKET.IO EVENTS
     socket.on('userConnected', ({ userId, email }) => {
       if (userId && !activeUsersMap.has(userId)) {
         activeUsersMap.set(userId, email || userId);
