@@ -1,211 +1,198 @@
 <!DOCTYPE html>
 <html lang="hu">
 <head>
-    <meta charset="UTF-8">
-    <title>ChatTEO Admin & AI Vezérlőpult</title>
-    <style>
-        body { font-family: Arial, sans-serif; background: #121212; color: #fff; margin: 0; padding: 20px; display: flex; gap: 20px; height: 90vh; }
-        
-        .sidebar { width: 320px; background: #1e1e2e; border-radius: 10px; padding: 15px; display: flex; flex-direction: column; gap: 15px; }
-        .panel-box { background: #2b2b3b; padding: 12px; border-radius: 8px; display: flex; flex-direction: column; gap: 8px; }
-        .panel-box input { padding: 8px; background: #121212; border: 1px solid #444; color: #fff; border-radius: 4px; outline: none; }
-        .panel-box button { padding: 8px; border: none; font-weight: bold; border-radius: 4px; cursor: pointer; color: white; }
-        
-        .btn-ai { background: #9b59b6; }
-        .btn-ban { background: #e74c3c; }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatTEO - Admin & AI Dashboard</title>
+  
+  <!-- Socket.IO Client CDN -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
-        .user-list-title { font-weight: bold; color: #aaa; font-size: 0.9em; margin-top: 10px; }
-        .user-item { padding: 10px; background: #2b2b3b; border-radius: 6px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; border: 2px solid transparent; }
-        .user-item.active { border-color: #007bff; background: #3b3b4f; }
-        .user-name { font-weight: bold; }
-        .user-email { font-size: 0.8em; color: #4da6ff; word-break: break-all; }
-
-        .chat-area { flex: 1; background: #1e1e2e; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
-        .header { background: #2b2b3b; padding: 15px; font-weight: bold; border-bottom: 1px solid #333; }
-        .messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-        .message { padding: 10px 14px; border-radius: 8px; max-width: 70%; }
-        .user-msg { background: #007bff; align-self: flex-start; }
-        .ai-msg { background: #28a745; align-self: flex-end; }
-        
-        .reply-area { display: flex; padding: 15px; background: #2b2b3b; gap: 10px; }
-        .reply-area input { flex: 1; padding: 12px; background: #121212; border: 1px solid #444; color: #fff; border-radius: 6px; outline: none; }
-        .reply-area button { padding: 12px 20px; background: #28a745; border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; }
-    </style>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: #1a1a24; color: #fff; display: flex; height: 100vh; padding: 20px; gap: 20px; }
+    .sidebar { width: 300px; background: #252538; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; }
+    .chat-container { flex: 1; background: #252538; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; }
+    h2, h3 { margin-bottom: 15px; }
+    .user-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .user-item { padding: 10px; background: #1a1a24; border-radius: 8px; cursor: pointer; border: 1px solid transparent; transition: 0.2s; }
+    .user-item:hover, .user-item.active { border-color: #2563eb; background: #2d2d42; }
+    #messages { flex: 1; background: #1a1a24; border-radius: 8px; padding: 15px; overflow-y: auto; margin-bottom: 15px; border: 1px solid #3b3b54; }
+    .message { margin-bottom: 10px; padding: 8px 12px; border-radius: 6px; max-width: 80%; }
+    .message.user { background: #374151; align-self: flex-start; }
+    .message.admin { background: #2563eb; align-self: flex-end; margin-left: auto; }
+    .input-area { display: flex; gap: 10px; }
+    input { flex: 1; padding: 12px; border-radius: 8px; border: 1px solid #3b3b54; background: #1a1a24; color: #fff; }
+    button { padding: 12px 24px; border-radius: 8px; border: none; background: #2563eb; color: #fff; font-weight: bold; cursor: pointer; }
+    button:hover { background: #1d4ed8; }
+    .logout-btn { background: #dc2626; margin-top: 15px; }
+  </style>
 </head>
 <body>
 
-    <div class="sidebar">
-        <!-- 1. ADD AI RÉSZ -->
-        <div class="panel-box">
-            <span style="font-weight: bold; color: #9b59b6;">✨ Add AI Jogosultság</span>
-            <input type="email" id="aiEmailInput" placeholder="User e-mail címe...">
-            <button class="btn-ai" onclick="addAiRole()">Hozzáadás AI-ként</button>
-        </div>
-
-        <!-- 2. BAN RÉSZ -->
-        <div class="panel-box">
-            <span style="font-weight: bold; color: #e74c3c;">🚫 Felhasználó Bannolása</span>
-            <input type="email" id="banEmailInput" placeholder="Bannolandó e-mail...">
-            <input type="text" id="banReasonInput" placeholder="Ban indoka...">
-            <button class="btn-ban" onclick="banUser()">BAN Küldése</button>
-        </div>
-
-        <!-- 3. KÜLÖN CHATEK / USEREK LISTÁJA -->
-        <div class="user-list-title">AKTÍV CHATEK (USEREK):</div>
-        <div id="userList" style="display: flex; flex-direction: column; gap: 8px; overflow-y: auto;">
-            <p style="color: #666; font-size: 0.8em;">Nincs aktív chat...</p>
-        </div>
+  <!-- OLDALSÁV: AKTÍV USEREK LISTÁJA -->
+  <div class="sidebar">
+    <h2>🛠️ Admin Panel</h2>
+    <h3>Aktív userek</h3>
+    <div id="userList" class="user-list">
+      <div style="color: #9ca3af; font-size: 0.9rem;">Várakozás userekre...</div>
     </div>
+    <button id="logoutBtn" class="logout-btn">Kijelentkezés</button>
+  </div>
 
-    <!-- CHAT FELÜLET A KIVÁLASZTOTT USERREL -->
-    <div class="chat-area">
-        <div class="header" id="chatHeader">Válassz ki egy felhasználót a bal oldali listából!</div>
-        <div class="messages" id="messageBox"></div>
-        <div class="reply-area">
-            <input type="text" id="adminInput" placeholder="Válasz küldése a ChatTEO (AI) nevében..." onkeydown="if(event.key === 'Enter') sendReply()">
-            <button onclick="sendReply()">Válasz (AI)</button>
-        </div>
+  <!-- CHAT ABLAK A KIVÁLASZTOTT USERREL -->
+  <div class="chat-container">
+    <h2 id="chatHeader">Válassz ki egy felhasználót a bal oldalon!</h2>
+    <div id="messages"></div>
+    <div class="input-area">
+      <input type="text" id="msgInput" placeholder="Írj választ az admin/AI nevében..." disabled>
+      <button id="sendBtn" disabled>Küldés</button>
     </div>
+  </div>
 
-    <script src="/socket.io/socket.io.js"></script>
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, query, where, getDocs, updateDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+  <script>
+    // 1. FIREBASE CONFIG (A saját adataiddal!)
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+    firebase.initializeApp(firebaseConfig);
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyAtF2vk9I59i6lEVftbFshlEHCHQXQ0-XM",
-            authDomain: "chatteo-5ffe4.firebaseapp.com",
-            projectId: "chatteo-5ffe4",
-            storageBucket: "chatteo-5ffe4.firebasestorage.app",
-            messagingSenderId: "238818745354",
-            appId: "1:238818745354:web:f61067f8975a67e95913f3"
-        };
+    const auth = firebase.auth();
+    const db = firebase.firestore();
 
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
+    // 2. SOCKET.IO CSATLAKOZÁS
+    const socket = io("https://chatteo.onrender.com");
 
-        // ADD AI funkció: Firestore-ban átállítja a user role-ját "ai"-ra
-        window.addAiRole = async () => {
-            const email = document.getElementById('aiEmailInput').value.trim();
-            if(!email) return alert("Adj meg egy email címet!");
+    let selectedUserId = null;
+    const activeUsersMap = new Map(); // userId -> email
 
-            const q = query(collection(db, "users"), where("email", "==", email));
-            const querySnapshot = await getDocs(q);
+    const userListDiv = document.getElementById('userList');
+    const messagesDiv = document.getElementById('messages');
+    const chatHeader = document.getElementById('chatHeader');
+    const msgInput = document.getElementById('msgInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
 
-            if (querySnapshot.empty) {
-                alert("Nem található ilyen e-mail címmel regisztrált fiók!");
-            } else {
-                querySnapshot.forEach(async (document) => {
-                    await updateDoc(doc(db, "users", document.id), { role: "ai" });
-                    alert(`Sikeres! ${email} mostantól AI jogosultsággal rendelkezik.`);
-                    document.getElementById('aiEmailInput').value = '';
-                });
-            }
-        };
-    </script>
+    // 3. AUTH ÁLLAPOT ÉS CSATLAKOZÁS ADMIN ROLE-LAL
+    auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        // Ellenőrizzük, hogy valóban admin-e
+        const userDoc = await db.collection('users').doc(user.uid).get();
+        const userData = userDoc.data() || {};
 
-    <script>
-        const socket = io();
-        let selectedUserId = null;
-        const users = {}; // Külön tárolja mindenkinek a saját chatait
+        if (userData.role !== 'admin' && userData.role !== 'ai') {
+          alert("Nincs admin jogosultságod!");
+          window.location.href = 'index.html';
+          return;
+        }
 
-        socket.on('adminUserJoined', (data) => {
-            const { userId, user } = data;
-            if (!users[userId]) {
-                users[userId] = { name: user.name, email: user.email, messages: [] };
-            }
-            updateUserList();
+        // Csatlakozás a szerverhez admin szerepkörrel (ez rakja be az 'adminGroup'-ba)
+        socket.emit('joinRoom', { 
+          userId: user.uid, 
+          email: user.email, 
+          role: 'admin' 
         });
 
-        socket.on('adminReceiveMessage', (data) => {
-            const { userId, username, email, message } = data;
-            if (!users[userId]) {
-                users[userId] = { name: username, email: email, messages: [] };
-            }
-            users[userId].messages.push({ sender: 'user', text: message });
-            updateUserList();
-            if (selectedUserId === userId) renderMessages();
+      } else {
+        window.location.href = 'index.html';
+      }
+    });
+
+    // 4. USEREK KEZELÉSE A BAL OLDALI SÁVBAN
+    socket.on('userConnected', ({ userId, email }) => {
+      if (!activeUsersMap.has(userId)) {
+        activeUsersMap.set(userId, email);
+        renderUserList();
+      }
+    });
+
+    socket.on('userDisconnected', ({ userId }) => {
+      activeUsersMap.delete(userId);
+      if (selectedUserId === userId) {
+        selectedUserId = null;
+        chatHeader.innerText = "A kiválasztott user lekapcsolódott.";
+        msgInput.disabled = true;
+        sendBtn.disabled = true;
+      }
+      renderUserList();
+    });
+
+    function renderUserList() {
+      userListDiv.innerHTML = '';
+      if (activeUsersMap.size === 0) {
+        userListDiv.innerHTML = '<div style="color: #9ca3af; font-size: 0.9rem;">Nincs aktív user.</div>';
+        return;
+      }
+
+      activeUsersMap.forEach((email, userId) => {
+        const item = document.createElement('div');
+        item.className = `user-item ${selectedUserId === userId ? 'active' : ''}`;
+        item.innerText = email || userId;
+        item.onclick = () => selectUser(userId, email);
+        userListDiv.appendChild(item);
+      });
+    }
+
+    function selectUser(userId, email) {
+      selectedUserId = userId;
+      chatHeader.innerText = `Chat vele: ${email}`;
+      msgInput.disabled = false;
+      sendBtn.disabled = false;
+      renderUserList();
+      messagesDiv.innerHTML = ''; // Abban a szobában lévő üzenetek törlése/újratöltése
+    }
+
+    // 5. ÜZENET ÉRKEZÉSE A USERTŐL (`messageToAdmin` CSATORNÁN)
+    socket.on('messageToAdmin', (msg) => {
+      // Automatikusan regisztráljuk a usert a listában, ha még nem volt ott
+      if (msg.senderId && !activeUsersMap.has(msg.senderId)) {
+        activeUsersMap.set(msg.senderId, msg.sender);
+        renderUserList();
+      }
+
+      // Ha épp ezzel a userrel van megnyitva a chat, megjelenítjük az üzenetet
+      if (selectedUserId === msg.senderId) {
+        appendMessage(msg.sender, msg.text, 'user');
+      }
+    });
+
+    // 6. ÜZENETKÜLDÉS AZ ADMIN/AI RÉSZÉRŐL
+    sendBtn.addEventListener('click', () => {
+      const text = msgInput.value.trim();
+      if (text && selectedUserId) {
+        socket.emit('chatMessage', {
+          targetUserId: selectedUserId,
+          text: text,
+          sender: 'Admin / AI'
         });
 
-        socket.on('adminUserLeft', (data) => {
-            delete users[data.userId];
-            if (selectedUserId === data.userId) {
-                selectedUserId = null;
-                document.getElementById('chatHeader').innerText = "A felhasználó kilépett.";
-                document.getElementById('messageBox').innerHTML = "";
-            }
-            updateUserList();
-        });
+        appendMessage('Admin / AI', text, 'admin');
+        msgInput.value = '';
+      }
+    });
 
-        function updateUserList() {
-            const listDiv = document.getElementById('userList');
-            const userIds = Object.keys(users);
-            if (userIds.length === 0) {
-                listDiv.innerHTML = '<p style="color: #666; font-size: 0.8em;">Nincs aktív chat...</p>';
-                return;
-            }
-            listDiv.innerHTML = '';
-            userIds.forEach(id => {
-                const u = users[id];
-                const item = document.createElement('div');
-                item.className = `user-item ${selectedUserId === id ? 'active' : ''}`;
-                item.onclick = () => selectUser(id);
-                item.innerHTML = `
-                    <div class="user-name">👤 ${u.name}</div>
-                    <div class="user-email">✉️ ${u.email}</div>
-                `;
-                listDiv.appendChild(item);
-            });
-        }
+    function appendMessage(sender, text, type) {
+      const item = document.createElement('div');
+      item.className = `message ${type}`;
+      item.innerText = `${sender}: ${text}`;
+      messagesDiv.appendChild(item);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
 
-        function selectUser(id) {
-            selectedUserId = id;
-            const u = users[id];
-            document.getElementById('chatHeader').innerText = `Külön Chat vele: ${u.name} (${u.email})`;
-            
-            // Kitöltjük a ban mezőt automatikusan az ő emailjével a kényelem kedvéért
-            document.getElementById('banEmailInput').value = u.email;
-
-            updateUserList();
-            renderMessages();
-        }
-
-        function renderMessages() {
-            const box = document.getElementById('messageBox');
-            box.innerHTML = '';
-            if (!selectedUserId || !users[selectedUserId]) return;
-
-            users[selectedUserId].messages.forEach(msg => {
-                const div = document.createElement('div');
-                div.className = `message ${msg.sender === 'user' ? 'user-msg' : 'ai-msg'}`;
-                div.innerText = msg.text;
-                box.appendChild(div);
-            });
-            box.scrollTop = box.scrollHeight;
-        }
-
-        function sendReply() {
-            if (!selectedUserId) return alert("Válassz ki egy felhasználót!");
-            const input = document.getElementById('adminInput');
-            const text = input.value.trim();
-            if (!text) return;
-
-            socket.emit('aiResponse', { userId: selectedUserId, message: text });
-            users[selectedUserId].messages.push({ sender: 'ai', text: text });
-            renderMessages();
-            input.value = '';
-        }
-
-        function banUser() {
-            const email = document.getElementById('banEmailInput').value.trim();
-            const reason = document.getElementById('banReasonInput').value.trim();
-            if(!email || !reason) return alert("Add meg az e-mail címet ÉS a ban indokát is!");
-
-            socket.emit('banUser', { email: email, reason: reason });
-            alert(`Sikeresen kitiltva: ${email}`);
-            document.getElementById('banEmailInput').value = '';
-            document.getElementById('banReasonInput').value = '';
-        }
-    </script>
+    // KIJELENTKEZÉS
+    logoutBtn.addEventListener('click', () => {
+      auth.signOut().then(() => window.location.href = 'index.html');
+    });
+  </script>
 </body>
 </html>
