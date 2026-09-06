@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ChatTEO</title>
   
+  <!-- Socket.IO Client CDN -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  
+  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -28,7 +31,7 @@
 </head>
 <body>
 
-  <!-- AUTH SCREEN -->
+  <!-- BEJELENTKEZŐ KÉPERNYŐ -->
   <div id="authScreen" class="card">
     <h1>🤖 ChatTEO</h1>
     <p style="margin-bottom: 1.5rem; color: #9ca3af;">Üdvözöl a ChatTEO!</p>
@@ -45,7 +48,7 @@
     <button id="authBtn">Bejelentkezés / Regisztráció</button>
   </div>
 
-  <!-- CHAT SCREEN -->
+  <!-- CHAT KÉPERNYŐ (SIMA USER) -->
   <div id="chatScreen" class="card">
     <h2>ChatTEO Room</h2>
     <div id="messages"></div>
@@ -56,21 +59,22 @@
     <button id="logoutBtn" style="background: #dc2626; margin-top: 15px;">Kijelentkezés</button>
   </div>
 
-  <!-- BANNED SCREEN -->
+  <!-- BANNED KÉPERNYŐ -->
   <div id="bannedScreen" class="card">
     <h2>❌ Felhasználó Letiltva</h2>
     <p id="banReason" style="margin-top: 10px;"></p>
   </div>
 
+  <script>
+    // FIREBASE KONFIGURÁCIÓ
     const firebaseConfig = {
-        apiKey: "AIzaSyAtF2vk9I59i6lEVftbFshlEHCHQXQ0-XM",
-        authDomain: "chatteo-5ffe4.firebaseapp.com",
-        projectId: "chatteo-5ffe4",
-        storageBucket: "chatteo-5ffe4.firebasestorage.app",
-        messagingSenderId: "238818745354",
-        appId: "1:238818745354:web:f61067f8975a67e95913f3"
+      apiKey: "AIzaSyAtF2vk9I59i6lEVftbFshlEHCHQXQ0-XM",
+      authDomain: "chatteo-5ffe4.firebaseapp.com",
+      projectId: "chatteo-5ffe4",
+      storageBucket: "chatteo-5ffe4.firebasestorage.app",
+      messagingSenderId: "238818745354",
+      appId: "1:238818745354:web:f61067f8975a67e95913f3"
     };
-
     firebase.initializeApp(firebaseConfig);
 
     const auth = firebase.auth();
@@ -89,7 +93,7 @@
     const sendBtn = document.getElementById('sendBtn');
     const logoutBtn = document.getElementById('logoutBtn');
 
-    // AUTH BEJELENTKEZÉS
+    // EMAIL / JELSZÓ BEJELENTKEZÉS ÉS REGISZTRÁCIÓ
     authBtn.addEventListener('click', async () => {
       const email = emailInput.value;
       const password = passwordInput.value;
@@ -111,12 +115,13 @@
       }
     });
 
+    // GOOGLE BEJELENTKEZÉS
     googleBtn.addEventListener('click', () => {
       const provider = new firebase.auth.GoogleAuthProvider();
       auth.signInWithPopup(provider).catch(err => alert(err.message));
     });
 
-    // AUTH ÁLLAPOT ELLENŐRZÉSE
+    // AUTH ÁLLAPOT ELLENŐRZÉSE ÉS ÁTIRÁNYÍTÁS
     auth.onAuthStateChanged(async (user) => {
       if (user) {
         try {
@@ -131,13 +136,11 @@
             return;
           }
 
-          // Csak akkor irányítunk át, ha explicit módon "admin" vagy "ai"
           if (userData.role === 'admin' || userData.role === 'ai') {
             window.location.href = 'admin.html';
             return;
           }
 
-          // Sima felhasználói nézet megjelenítése
           authScreen.style.display = 'none';
           chatScreen.style.display = 'block';
           socket.emit('joinRoom', { userId: user.uid, email: user.email, role: 'user' });
@@ -152,14 +155,21 @@
       }
     });
 
-    sendBtn.addEventListener('click', () => {
+    // ÜZENETKÜLDÉS
+    sendBtn.addEventListener('click', sendMessage);
+    msgInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendMessage();
+    });
+
+    function sendMessage() {
       const text = msgInput.value.trim();
       if (text) {
         socket.emit('chatMessage', text);
         msgInput.value = '';
       }
-    });
+    }
 
+    // ÜZENET FOGADÁSA A SZERVERTŐL
     socket.on('message', (msg) => {
       const item = document.createElement('div');
       item.style.marginBottom = '5px';
@@ -168,6 +178,7 @@
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     });
 
+    // KIJELENTKEZÉS
     logoutBtn.addEventListener('click', () => auth.signOut());
   </script>
 </body>
