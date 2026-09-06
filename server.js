@@ -3,43 +3,47 @@ const http = require('http');
 const { Server } = require('socket.io');
 
 const app = express();
-const server = http.createServer(app);
 
-// CORS engedélyezése a Netlify domain-nek és helyi tesztelésnek
-const io = new Server(server, {
-  cors: {
-    origin: ["https://chatteo.netlify.app", "http://localhost:3000", "*"],
-    methods: ["GET", "POST"],
-    credentials: true
+// 1. Express CORS engedélyezése
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
   }
+  next();
 });
 
 app.use(express.json());
 
-// Egyszerű Health Check végpont a Rendernek
-app.get('/', (req, res) => {
-  res.send('ChatTEO Backend Server is Running!');
+const server = http.createServer(app);
+
+// 2. Socket.IO CORS engedélyezése
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
 });
 
-// Aktív szobák és felhasználók tárolása a memóriában
+// Health check endpoint
+app.get('/', (req, res) => {
+  res.send('ChatTEO Backend Running!');
+});
+
 const activeUsers = new Map();
 
 io.on('connection', (socket) => {
-  console.log(`Új kliens csatlakozott: ${socket.id}`);
+  console.log(`Kliens csatlakozott: ${socket.id}`);
 
-  // Felhasználó csatlakozása a saját szobájához
   socket.on('joinRoom', ({ userId, email }) => {
     socket.join(userId);
     activeUsers.set(socket.id, { userId, email });
-    
-    // Értesítjük az adminokat az új aktív userről
     io.emit('userConnected', { userId, email, socketId: socket.id });
-    console.log(`User csatlakozott szobához: ${userId} (${email})`);
   });
 
-  // Üzenetküldés kezelése
   socket.on('chatMessage', (data) => {
-    // Ha sima string érkezik a kliensről
     if (typeof data === 'string') {
       const userInfo = activeUsers.get(socket.id);
       if (userInfo) {
@@ -50,7 +54,6 @@ io.on('connection', (socket) => {
         });
       }
     } else {
-      // Ha objektum érkezik (pl. Admin küld üzenetet egy specifikus user szobájába)
       const { targetUserId, text, sender } = data;
       io.to(targetUserId).emit('message', {
         sender: sender || 'Admin',
@@ -60,19 +63,16 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Kijelentkezés / Kapcsolat bontása
   socket.on('disconnect', () => {
     const userInfo = activeUsers.get(socket.id);
     if (userInfo) {
       io.emit('userDisconnected', { userId: userInfo.userId });
       activeUsers.delete(socket.id);
     }
-    console.log(`Kliens lekapcsolódott: ${socket.id}`);
   });
 });
 
-// Port beállítása (Render automatikusan megadja a process.env.PORT-ot)
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`ChatTEO szerver fut a következő porton: ${PORT}`);
+  console.log(`Szerver fut a ${PORT} porton`);
 });
