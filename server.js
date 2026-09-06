@@ -1,78 +1,62 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-
-const app = express();
-
-// 1. Express CORS engedélyezése
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  next();
-});
-
-app.use(express.json());
-
-const server = http.createServer(app);
-
-// 2. Socket.IO CORS engedélyezése
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
-
-// Health check endpoint
-app.get('/', (req, res) => {
-  res.send('ChatTEO Backend Running!');
-});
-
-const activeUsers = new Map();
+// ... felette a CORS és Express beállítások ...
 
 io.on('connection', (socket) => {
   console.log(`Kliens csatlakozott: ${socket.id}`);
 
-  socket.on('joinRoom', ({ userId, email }) => {
+  // CSATLAKOZÁS
+  socket.on('joinRoom', ({ userId, email, role }) => {
     socket.join(userId);
-    activeUsers.set(socket.id, { userId, email });
-    io.emit('userConnected', { userId, email, socketId: socket.id });
+    
+    // Ha admin vagy AI lép be, betesszük a közös "adminGroup" szobába is
+    if (role === 'admin' || role === 'ai') {
+      socket.join('adminGroup');
+    }
+
+    activeUsers.set(socket.id, { userId, email, role });
+    
+    // Értesítjük az AI-t / Admint az új userről
+    io.to('adminGroup').emit('userConnected', { userId, email, socketId: socket.id });
   });
 
+  // ÜZENETKÜLDÉS
   socket.on('chatMessage', (data) => {
+    const userInfo = activeUsers.get(socket.id);
+
     if (typeof data === 'string') {
-      const userInfo = activeUsers.get(socket.id);
+      // Sima User küld üzenetet -> Továbbítjuk a user saját szobájába ÉS az Admin/AI szobába!
       if (userInfo) {
-        io.to(userInfo.userId).emit('message', {
+        const msgPayload = {
           sender: userInfo.email,
+          senderId: userInfo.userId,
           text: data,
           timestamp: new Date().toISOString()
-        });
+        };
+
+        // Kliens saját maga is megkapja
+        io.to(userInfo.userId).emit('message', msgPayload);
+        
+        // Az AI / Admin is megkapja!
+        io.to('adminGroup').emit('messageToAdmin', msgPayload);
       }
     } else {
+      // Admin / AI válaszol egy adott usernek
       const { targetUserId, text, sender } = data;
-      io.to(targetUserId).emit('message', {
-        sender: sender || 'Admin',
+      const msgPayload = {
+        sender: sender || 'AI Bot',
         text: text,
         timestamp: new Date().toISOString()
-      });
+      };
+
+      io.to(targetUserId).emit('message', msgPayload);
+      io.to('adminGroup').emit('messageToAdmin', { ...msgPayload, senderId: targetUserId });
     }
   });
 
   socket.on('disconnect', () => {
     const userInfo = activeUsers.get(socket.id);
     if (userInfo) {
-      io.emit('userDisconnected', { userId: userInfo.userId });
+      io.to('adminGroup').emit('userDisconnected', { userId: userInfo.userId });
       activeUsers.delete(socket.id);
     }
   });
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Szerver fut a ${PORT} porton`);
 });
