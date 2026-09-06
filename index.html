@@ -5,10 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ChatTEO</title>
   
-  <!-- Socket.IO Client CDN -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  
-  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -68,22 +65,19 @@
   <script>
     // 1. FIREBASE CONFIG (A saját adataiddal!)
     const firebaseConfig = {
-      apiKey: "AIzaSyAtF2vk9I59i6lEVftbFshlEHCHQXQ0-XM",
-      authDomain: "chatteo-5ffe4.firebaseapp.com",
-      projectId: "chatteo-5ffe4",
-      storageBucket: "chatteo-5ffe4.firebasestorage.app",
-      messagingSenderId: "238818745354",
-      appId: "1:238818745354:web:f61067f8975a67e95913f3"
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
     };
     firebase.initializeApp(firebaseConfig);
 
     const auth = firebase.auth();
     const db = firebase.firestore();
-
-    // 2. SOCKET.IO CSATLAKOZÁS A RENDER SZERVERHEZ
     const socket = io("https://chatteo.onrender.com");
 
-    // UI ELEMEK
     const authScreen = document.getElementById('authScreen');
     const chatScreen = document.getElementById('chatScreen');
     const bannedScreen = document.getElementById('bannedScreen');
@@ -96,7 +90,7 @@
     const sendBtn = document.getElementById('sendBtn');
     const logoutBtn = document.getElementById('logoutBtn');
 
-    // 3. E-MAIL / JELSZÓ AUTH (Javított Try-Catch Bejelentkezés/Regisztráció)
+    // AUTH BEJELENTKEZÉS
     authBtn.addEventListener('click', async () => {
       const email = emailInput.value;
       const password = passwordInput.value;
@@ -104,10 +98,8 @@
       if (!email || !password) return alert("Kérlek add meg az e-mailt és a jelszót!");
 
       try {
-        // Először megpróbálunk BEJELENTKEZNI
         await auth.signInWithEmailAndPassword(email, password);
       } catch (error) {
-        // Ha nem létezik a fiók, regisztráljuk
         if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
           try {
             await auth.createUserWithEmailAndPassword(email, password);
@@ -120,39 +112,40 @@
       }
     });
 
-    // GOOGLE AUTH
     googleBtn.addEventListener('click', () => {
       const provider = new firebase.auth.GoogleAuthProvider();
       auth.signInWithPopup(provider).catch(err => alert(err.message));
     });
 
-    // 4. AUTH ÁLLAPOT ÉS ROLE CIKLUS
+    // AUTH ÁLLAPOT ELLENŐRZÉSE
     auth.onAuthStateChanged(async (user) => {
       if (user) {
-        const userDoc = await db.collection('users').doc(user.uid).get();
-        const userData = userDoc.data() || {};
+        try {
+          const userDoc = await db.collection('users').doc(user.uid).get();
+          const userData = userDoc.exists ? userDoc.data() : {};
 
-        // Ha BAN-olva van
-        if (userData.banned) {
+          if (userData.banned) {
+            authScreen.style.display = 'none';
+            chatScreen.style.display = 'none';
+            bannedScreen.style.display = 'block';
+            document.getElementById('banReason').innerText = userData.banReason || "Letiltva.";
+            return;
+          }
+
+          // Csak akkor irányítunk át, ha explicit módon "admin" vagy "ai"
+          if (userData.role === 'admin' || userData.role === 'ai') {
+            window.location.href = 'admin.html';
+            return;
+          }
+
+          // Sima felhasználói nézet megjelenítése
           authScreen.style.display = 'none';
-          chatScreen.style.display = 'none';
-          bannedScreen.style.display = 'block';
-          document.getElementById('banReason').innerText = userData.banReason || "Inkább ne kérdezd miért...";
-          return;
+          chatScreen.style.display = 'block';
+          socket.emit('joinRoom', { userId: user.uid, email: user.email, role: 'user' });
+
+        } catch (err) {
+          console.error("Adatbázis elérés hiba:", err);
         }
-
-        // Ha ADMIN vagy AI -> Átirányítás az admin.html-re
-        if (userData.role === 'admin' || userData.role === 'ai') {
-          window.location.href = 'admin.html';
-          return;
-        }
-
-        // Sima Felhasználó -> Chat Megjelenítése
-        authScreen.style.display = 'none';
-        chatScreen.style.display = 'block';
-
-        socket.emit('joinRoom', { userId: user.uid, email: user.email });
-
       } else {
         authScreen.style.display = 'block';
         chatScreen.style.display = 'none';
@@ -160,9 +153,8 @@
       }
     });
 
-    // 5. CHAT ÜZENETEK
     sendBtn.addEventListener('click', () => {
-      const text = msgInput.value;
+      const text = msgInput.value.trim();
       if (text) {
         socket.emit('chatMessage', text);
         msgInput.value = '';
@@ -177,8 +169,7 @@
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     });
 
-    // KIJELENTKEZÉS
     logoutBtn.addEventListener('click', () => auth.signOut());
   </script>
 </body>
-</html>>
+</html>
