@@ -5,10 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ChatTEO - Admin Dashboard</title>
   
-  <!-- Socket.IO Client CDN -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  
-  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -16,6 +13,9 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { background-color: #1a1a24; color: #fff; display: flex; height: 100vh; padding: 20px; gap: 20px; }
+    
+    #loadingScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1a1a24; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; }
+    
     .sidebar { width: 300px; background: #252538; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; }
     .chat-container { flex: 1; background: #252538; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; }
     h2, h3 { margin-bottom: 15px; }
@@ -36,7 +36,13 @@
 </head>
 <body>
 
-  <!-- OLDALSÁV: AKTÍV USEREK LISTÁJA -->
+  <!-- TÖLTŐ ÉS HIBAKÉPERNYŐ (Megállítja a folytonos átirányítást) -->
+  <div id="loadingScreen">
+    <h2 id="statusText">Betöltés...</h2>
+    <p id="errorDetail" style="color: #ef4444; margin-top: 10px;"></p>
+    <button id="manualLogoutBtn" style="margin-top: 20px; display: none; background: #dc2626;">Kijelentkezés és Visszalépés</button>
+  </div>
+
   <div class="sidebar">
     <h2>🛠️ Admin Panel</h2>
     <h3>Aktív userek</h3>
@@ -46,18 +52,16 @@
     <button id="logoutBtn" class="logout-btn">Kijelentkezés</button>
   </div>
 
-  <!-- CHAT ABLAK A KIVÁLASZTOTT USERREL -->
   <div class="chat-container">
     <h2 id="chatHeader">Válassz ki egy felhasználót a bal oldalon!</h2>
     <div id="messages"></div>
     <div class="input-area">
-      <input type="text" id="msgInput" placeholder="Írj választ az admin/AI nevében..." disabled>
+      <input type="text" id="msgInput" placeholder="Írj választ az admin nevében..." disabled>
       <button id="sendBtn" disabled>Küldés</button>
     </div>
   </div>
 
   <script>
-    // 1. FIREBASE CONFIG (Cseréld ki a saját adataidra!)
     const firebaseConfig = {
       apiKey: "YOUR_API_KEY",
       authDomain: "YOUR_PROJECT.firebaseapp.com",
@@ -70,12 +74,15 @@
 
     const auth = firebase.auth();
     const db = firebase.firestore();
-
-    // 2. SOCKET.IO CSATLAKOZÁS
     const socket = io("https://chatteo.onrender.com");
 
     let selectedUserId = null;
-    const activeUsersMap = new Map(); // userId -> email
+    const activeUsersMap = new Map();
+
+    const loadingScreen = document.getElementById('loadingScreen');
+    const statusText = document.getElementById('statusText');
+    const errorDetail = document.getElementById('errorDetail');
+    const manualLogoutBtn = document.getElementById('manualLogoutBtn');
 
     const userListDiv = document.getElementById('userList');
     const messagesDiv = document.getElementById('messages');
@@ -84,7 +91,7 @@
     const sendBtn = document.getElementById('sendBtn');
     const logoutBtn = document.getElementById('logoutBtn');
 
-    // 3. SAFE AUTH CIKLUS ÉS ROLE-CHECK (Átirányítási hurok elleni védelemmel)
+    // AUTH ELLENŐRZÉS HUROK NÉLKÜL
     auth.onAuthStateChanged(async (user) => {
       if (!user) {
         window.location.href = 'index.html';
@@ -92,41 +99,36 @@
       }
 
       try {
+        statusText.innerText = "Jogosultságok ellenőrzése...";
         const userDoc = await db.collection('users').doc(user.uid).get();
 
-        if (userDoc.exists) {
-          const userData = userDoc.data();
-          if (userData.role === 'admin' || userData.role === 'ai') {
-            console.log("Admin jogosultság elfogadva.");
-            socket.emit('joinRoom', { 
-              userId: user.uid, 
-              email: user.email, 
-              role: userData.role 
-            });
-          } else {
-            console.warn("Nem admin fiók, visszanavigálás...");
-            window.location.href = 'index.html';
-          }
-        } else {
-          // Ha még nincs rekordja a Firestore-ban, létrehozzuk admin role-lal
-          await db.collection('users').doc(user.uid).set({
-            email: user.email,
-            role: 'admin',
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-
+        if (userDoc.exists && (userDoc.data().role === 'admin' || userDoc.data().role === 'ai')) {
+          // SIKER: Elrejtjük a betöltő képernyőt
+          loadingScreen.style.display = 'none';
+          
           socket.emit('joinRoom', { 
             userId: user.uid, 
             email: user.email, 
-            role: 'admin' 
+            role: userDoc.data().role 
           });
+        } else {
+          // NEM ADMIN: Megállítjuk az átirányítást, és hibaüzenetet mutatunk!
+          statusText.innerText = "❌ Hozzáférés Megtagadva";
+          errorDetail.innerText = `A(z) "${user.email}" fiók nem rendelkezik Admin jogosultsággal!`;
+          manualLogoutBtn.style.display = 'block';
         }
       } catch (err) {
-        console.error("Firestore ellenőrzési hiba:", err);
+        statusText.innerText = "❌ Firestore Hiba";
+        errorDetail.innerText = err.message;
+        manualLogoutBtn.style.display = 'block';
       }
     });
 
-    // 4. USEREK KEZELÉSE A BAL OLDALI SÁVBAN
+    manualLogoutBtn.addEventListener('click', () => {
+      auth.signOut().then(() => window.location.href = 'index.html');
+    });
+
+    // SOCKET.IO EVENTS
     socket.on('userConnected', ({ userId, email }) => {
       if (userId && !activeUsersMap.has(userId)) {
         activeUsersMap.set(userId, email || userId);
@@ -167,27 +169,22 @@
       msgInput.disabled = false;
       sendBtn.disabled = false;
       renderUserList();
-      messagesDiv.innerHTML = ''; // Töröljük az előző user üzeneteit a nézetből
+      messagesDiv.innerHTML = '';
     }
 
-    // 5. ÜZENET ÉRKEZÉSE A USERTŐL (`messageToAdmin` CSATORNÁN)
     socket.on('messageToAdmin', (msg) => {
       if (msg.senderId && !activeUsersMap.has(msg.senderId)) {
         activeUsersMap.set(msg.senderId, msg.sender || msg.senderId);
         renderUserList();
       }
 
-      // Csak akkor jelenítjük meg a chat ablakban, ha a küldő user van kijelölve
       if (selectedUserId === msg.senderId) {
         appendMessage(msg.sender, msg.text, 'user');
       }
     });
 
-    // 6. ÜZENETKÜLDÉS AZ ADMIN RÉSZÉRŐL
     sendBtn.addEventListener('click', sendMessage);
-    msgInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') sendMessage();
-    });
+    msgInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
 
     function sendMessage() {
       const text = msgInput.value.trim();
@@ -211,11 +208,8 @@
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // KIJELENTKEZÉS
     logoutBtn.addEventListener('click', () => {
-      auth.signOut().then(() => {
-        window.location.href = 'index.html';
-      });
+      auth.signOut().then(() => window.location.href = 'index.html');
     });
   </script>
 </body>
